@@ -77,15 +77,20 @@ class KModel(torch.nn.Module):
         phonemes: str,
         ref_s: torch.FloatTensor,
         speed: Number = 1,
-        return_output: bool = False # MARK: BACKWARD COMPAT
+        return_output: bool = False  # MARK: BACKWARD COMPAT
     ) -> Union['KModel.Output', torch.FloatTensor]:
-        input_ids = list(filter(lambda i: i is not None, map(lambda p: self.vocab.get(p), phonemes)))
+        # Replace lambda-based filtering with an explicit loop:
+        input_ids = []
+        for p in phonemes:
+            token = self.vocab.get(p)
+            if token is not None:
+                input_ids.append(token)
         logger.debug(f"phonemes: {phonemes} -> input_ids: {input_ids}")
-        assert len(input_ids)+2 <= self.context_length, (len(input_ids)+2, self.context_length)
+        assert len(input_ids) + 2 <= self.context_length, (len(input_ids) + 2, self.context_length)
         input_ids = torch.LongTensor([[0, *input_ids, 0]]).to(self.device)
         input_lengths = torch.LongTensor([input_ids.shape[-1]]).to(self.device)
         text_mask = torch.arange(input_lengths.max()).unsqueeze(0).expand(input_lengths.shape[0], -1).type_as(input_lengths)
-        text_mask = torch.gt(text_mask+1, input_lengths.unsqueeze(1)).to(self.device)
+        text_mask = torch.gt(text_mask + 1, input_lengths.unsqueeze(1)).to(self.device)
         bert_dur = self.bert(input_ids, attention_mask=(~text_mask).int())
         d_en = self.bert_encoder(bert_dur).transpose(-1, -2)
         ref_s = ref_s.to(self.device)
@@ -105,4 +110,7 @@ class KModel(torch.nn.Module):
         t_en = self.text_encoder(input_ids, input_lengths, text_mask)
         asr = t_en @ pred_aln_trg
         audio = self.decoder(asr, F0_pred, N_pred, ref_s[:, :128]).squeeze().cpu()
-        return self.Output(audio=audio, pred_dur=pred_dur.cpu()) if return_output else audio
+        if return_output:
+            return self.Output(audio=audio, pred_dur=pred_dur.cpu())
+        else:
+            return audio
