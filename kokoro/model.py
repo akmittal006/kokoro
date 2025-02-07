@@ -40,16 +40,23 @@ class KModel(torch.nn.Module):
         self.bert_encoder = torch.nn.Linear(self.bert.config.hidden_size, config['hidden_dim'])
         self.context_length = self.bert.config.max_position_embeddings
         self.predictor = ProsodyPredictor(
-            style_dim=config['style_dim'], d_hid=config['hidden_dim'],
-            nlayers=config['n_layer'], max_dur=config['max_dur'], dropout=config['dropout']
+            style_dim=config['style_dim'],
+            d_hid=config['hidden_dim'],
+            nlayers=config['n_layer'],
+            max_dur=config['max_dur'],
+            dropout=float(config['dropout'])  # Cast dropout to float
         )
         self.text_encoder = TextEncoder(
-            channels=config['hidden_dim'], kernel_size=config['text_encoder_kernel_size'],
-            depth=config['n_layer'], n_symbols=config['n_token']
+            channels=config['hidden_dim'],
+            kernel_size=config['text_encoder_kernel_size'],
+            depth=config['n_layer'],
+            n_symbols=config['n_token']
         )
         self.decoder = Decoder(
-            dim_in=config['hidden_dim'], style_dim=config['style_dim'],
-            dim_out=config['n_mels'], **config['istftnet']
+            dim_in=config['hidden_dim'],
+            style_dim=config['style_dim'],
+            dim_out=config['n_mels'],
+            **config['istftnet']
         )
         if not model:
             model = hf_hub_download(repo_id=KModel.REPO_ID, filename='kokoro-v1_0.pth')
@@ -61,6 +68,7 @@ class KModel(torch.nn.Module):
                 logger.debug(f"Did not load {key} from state_dict")
                 state_dict = {k[7:]: v for k, v in state_dict.items()}
                 getattr(self, key).load_state_dict(state_dict, strict=False)
+
 
     @property
     def device(self):
