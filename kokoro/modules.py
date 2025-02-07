@@ -179,6 +179,7 @@ class DurationEncoder(nn.Module):
 
 # https://github.com/yl4579/StyleTTS2/blob/main/Utils/PLBERT/util.py
 class CustomAlbert(AlbertModel):
-    def forward(self, *args, **kwargs):
-        outputs = super().forward(*args, **kwargs)
+   def forward(self, input_ids, attention_mask=None):
+        # Call the parent forward method with explicitly provided arguments.
+        outputs = super().forward(input_ids, attention_mask=attention_mask)
         return outputs.last_hidden_state
