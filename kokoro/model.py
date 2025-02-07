@@ -1,11 +1,11 @@
 from .istftnet import Decoder
 from .modules import CustomAlbert, ProsodyPredictor, TextEncoder
-from dataclasses import dataclass
 from huggingface_hub import hf_hub_download
 from loguru import logger
 from numbers import Number
 from transformers import AlbertConfig
 from typing import Dict, Optional, Union
+from dataclasses import dataclass
 import json
 import torch
 
@@ -15,19 +15,13 @@ class KModel(torch.nn.Module):
     1. Init weights, downloading config.json + model.pth from HF if needed
     2. forward(phonemes: str, ref_s: FloatTensor) -> (audio: FloatTensor)
 
-    You likely only need one KModel instance, and it can be reused across
-    multiple KPipelines to avoid redundant memory allocation.
-
-    Unlike KPipeline, KModel is language-blind.
-
-    KModel stores self.vocab and thus knows how to map phonemes -> input_ids,
-    so there is no need to repeatedly download config.json outside of KModel.
+    KModel stores self.vocab and maps phonemes -> input_ids.
     '''
-
     REPO_ID = 'hexgrad/Kokoro-82M'
 
     def __init__(self, config: Union[Dict, str, None] = None, model: Optional[str] = None):
         super().__init__()
+        # Load config from dict or file.
         if not isinstance(config, dict):
             if not config:
                 logger.debug("No config provided, downloading from HF")
@@ -35,6 +29,9 @@ class KModel(torch.nn.Module):
             with open(config, 'r', encoding='utf-8') as r:
                 config = json.load(r)
                 logger.debug(f"Loaded config: {config}")
+        # Ensure dropout is a Python float.
+        config['dropout'] = float(config.get('dropout', 0.5))
+        
         self.vocab = config['vocab']
         self.bert = CustomAlbert(AlbertConfig(vocab_size=config['n_token'], **config['plbert']))
         self.bert_encoder = torch.nn.Linear(self.bert.config.hidden_size, config['hidden_dim'])
@@ -44,7 +41,7 @@ class KModel(torch.nn.Module):
             d_hid=config['hidden_dim'],
             nlayers=config['n_layer'],
             max_dur=config['max_dur'],
-            dropout=float(config['dropout'])  # Cast dropout to float
+            dropout=config['dropout']  # Now ensured to be a float
         )
         self.text_encoder = TextEncoder(
             channels=config['hidden_dim'],
@@ -69,7 +66,6 @@ class KModel(torch.nn.Module):
                 state_dict = {k[7:]: v for k, v in state_dict.items()}
                 getattr(self, key).load_state_dict(state_dict, strict=False)
 
-
     @property
     def device(self):
         return self.bert.device
@@ -87,7 +83,7 @@ class KModel(torch.nn.Module):
         speed: Number = 1,
         return_output: bool = False  # MARK: BACKWARD COMPAT
     ) -> Union['KModel.Output', torch.FloatTensor]:
-        # Replace lambda-based filtering with an explicit loop:
+        # Convert phonemes to token IDs without lambdas.
         input_ids = []
         for p in phonemes:
             token = self.vocab.get(p)
